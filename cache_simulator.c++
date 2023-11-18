@@ -70,7 +70,7 @@ int read(Block block[128][4], int physical_address, int blockoffset, int index, 
         //miss
         
         int lru_block_no = -1;
-        int min_lru_counter = INT_MAX;
+        int max_lru_counter =-1;
         for(int i=0; i<4; i++){
             if(!block[index][i].isFull){
                 block_no=i;
@@ -79,10 +79,10 @@ int read(Block block[128][4], int physical_address, int blockoffset, int index, 
 
             }
 
-             if (block[index][i].lru_counter < min_lru_counter) {
-                    min_lru_counter = block[index][i].lru_counter;
-                    lru_block_no = i;
-                }         
+          if (block[index][i].lru_counter > max_lru_counter) {
+    max_lru_counter = block[index][i].lru_counter;
+    lru_block_no = i;
+}       
         }
 
         if(block_no==-1){
