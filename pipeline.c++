@@ -13,16 +13,20 @@ struct control
     string ALUSelect;
     bool regWrite=0;
     bool regRead=0;
-    int ALUResult; 
     int flag=0;
 };
 
- 
+ struct PC{
+    int pc;
+    int valid;
+ };
 
 struct IFID
 {
     int dpc;
     string instruction;
+    int valid;
+    int stall;
 };
 
 struct IDEX
@@ -30,9 +34,15 @@ struct IDEX
     int dpc;
     int imm1;
     int imm2;
+    int rsl1;
+    int rsl2;
     int rs1;
     int rs2;
     int rdl;
+    int func3;
+    int func7;
+    int valid;
+    int stall;
    control ctrl;
 
 };
@@ -42,7 +52,11 @@ struct EXMO
     control ctrl;
     int ALUResult;
     int rs2;
-    int rd;;
+    int rdl;
+    int rd;
+    int tpc;
+    int valid;
+    int stall;
 };
 
 
@@ -52,10 +66,12 @@ struct MOWB
     int ALUResult;
     int LDResult;
     int rdl;
+    int valid;
+    int stall;
  
 };
 
-
+unordered_map<int, int> memory;
 
 void controlUnit(IDEX &idex, EXMO &exmo, MOWB &mowb,  string opcode)
 {
@@ -167,6 +183,22 @@ else if(ALUSelect=="1111"){
 }
 
 
+int forwarder(int rsl,  int rs, int Erdl, int Mrdl, IDEX &idex){
+    if(rsl==Erdl && rsl==idex.rsl1){
+        return idex.rs1;
+    }
+    if(rsl==Erdl && rsl==idex.rsl2){
+        return idex.rs2;
+    }
+    if(rsl==Mrdl && rsl==idex.rsl1){
+        return idex.rs1;
+    }
+     if(rsl==Mrdl && rsl==idex.rsl2){
+        return idex.rs2;
+    }
+    
+}
+
 std::string intToBinary(int number) {
     // Use std::bitset to convert the integer to binary
     std::bitset<32> binary(number);
@@ -190,9 +222,141 @@ int bin2imm(string str){
     return k;
 }
 
+
+void IF_stage(IFID &ifid, PC &pc, IDEX &idex, string &instruction) {
+
+    if(ifid.stall || !pc.valid){
+        return;
+    }
+    ifid.dpc=pc.pc;
+    ifid.instruction = instruction;
+       pc.valid=true;
+}
+
+void ID_stage(IFID &ifid, IDEX &idex, EXMO &exmo, MOWB &mowb, control &ctrl, string &opcode, string* gpr) {
+
+    if(idex.stall || !ifid.valid){
+        return;
+    }
+
+    idex.dpc = ifid.dpc;
+    
+    if(opcode=="0010011" )//i
+    {
+        idex.imm1=bin2imm(ifid.instruction.substr(0, 12));
+        idex.rs1=bin2imm(ifid.instruction.substr(12, 5));
+        idex.func3=bin2imm(ifid.instruction.substr(17, 3));
+        idex.rdl=bin2imm(ifid.instruction.substr(20, 5));
+        idex.func7=3;
+    }
+    else if(opcode=="1100011"){ //branch
+        string imm=ifid.instruction.substr(0, 7)+ifid.instruction.substr(20, 5);
+        idex.imm1=bin2imm(imm);
+        idex.rs2=bin2imm(ifid.instruction.substr(7, 5));
+        idex.rs1=bin2imm(ifid.instruction.substr(12, 5));
+        idex.func3=bin2imm(ifid.instruction.substr(17, 3)); 
+    }
+    else if(opcode=="0110011"){//r
+        idex.func7=bin2imm(ifid.instruction.substr(0, 7));
+        idex.rs2=bin2imm(ifid.instruction.substr(7, 5));
+        idex.rs1=bin2imm(ifid.instruction.substr(12, 5));
+        idex.func3=bin2imm(ifid.instruction.substr(17, 3));
+        idex.rdl=bin2imm(ifid.instruction.substr(20, 5));
+        
+
+        }
+
+    
+        controlUnit(idex, exmo, mowb, opcode);
+        int r1, r2;
+    
+        if(idex.ctrl.regRead==1){
+        r1=bin2imm(gpr[idex.rs1]);
+        }
+        if(idex.ctrl.ALUSrc==0 && idex.ctrl.regRead==1){
+        r2=bin2imm(gpr[idex.rdl]);
+        }
+        if(idex.ctrl.ALUSrc==1){
+            r2=idex.imm1;
+        }
+
+   idex.valid=true;
+   ifid.stall=false;
+
+}
+
+void EX_stage(IDEX &idex, EXMO &exmo, MOWB &mowb, control &ctrl,  string* gpr, IFID &ifid, PC &pc) {
+
+     if(exmo.stall || !idex.valid){
+        return;
+    }
+    
+    int aluinput1, aluinput2;
+    aluinput1=forwarder(idex.rsl1, idex.rs1, exmo.rdl, mowb.rdl, idex );
+    aluinput2=forwarder(idex.rsl2, idex.rs2, exmo.rdl, mowb.rdl, idex);
+    exmo.ALUResult = ALU(ctrl.ALUSelect, aluinput1, aluinput2);
+     if(aluinput1==aluinput2){
+            ctrl.flag=1;
+        }
+    exmo.ctrl=idex.ctrl;
+      if(ctrl.flag==1){
+            exmo.tpc=idex.dpc+idex.imm1;
+            idex.valid=false;
+            ifid.valid=false;
+            pc.valid=false;
+        }
+        exmo.valid=true;
+        idex.stall=false;
+
+
+}
+
+void MEM_stage(EXMO &exmo, MOWB &mowb, IDEX &idex, PC &pc, control &ctrl, string *gpr) {
+      if(mowb.stall || !exmo.valid){
+        return;
+    }
+   
+    mowb.ALUResult = exmo.ALUResult;
+    mowb.rdl = exmo.rdl;
+    if (exmo.ctrl.memWrite){
+        memory[exmo.ALUResult]=idex.rs2;
+    }
+    if (exmo.ctrl.memRead){
+       mowb.LDResult= memory[exmo.ALUResult];
+    }
+    mowb.ALUResult = exmo.ALUResult;
+    mowb.ctrl=exmo.ctrl;
+    if(ctrl.flag==1){
+        pc.pc=exmo.tpc;
+        pc.valid=true;
+    }
+    exmo.stall=false;
+    mowb.valid=true;
+}
+
+void WB_stage(MOWB &mowb, string* gpr) {
+    if(!mowb.valid){
+        return;
+    }
+    if(!mowb.ctrl.regWrite){
+        return;
+    }
+    if (mowb.ctrl.regWrite == 1) {
+        if (mowb.ctrl.mem2Reg == 0) {
+            gpr[mowb.rdl] = intToBinary(mowb.ALUResult);
+        }
+        else{
+             gpr[mowb.rdl] = intToBinary(mowb.LDResult);
+        }
+    }
+   mowb.stall=false;
+}
+
+
 int main(){
 
 control ctrl;
+PC pc;
 IFID ifid;
 IDEX idex;
 EXMO exmo;
@@ -221,119 +385,29 @@ while(getline(in, instruction)){
    
    
    for(int i=0; i < l ; i++){
-    cout<<v[i];
-    ifid.dpc=i;
-    ifid.instruction=v[i];
-    string opcode=v[i].substr(25,7);
-    idex.dpc=i;
-    if(opcode=="0010011" )//i
-    {
-        idex.imm1=bin2imm(instruction.substr(0, 12));
-        idex.rs1=bin2imm(instruction.substr(12, 5));
-        string f3=ifid.instruction.substr(17, 3);
-        idex.rdl=bin2imm(ifid.instruction.substr(20, 5));
-        string f7="3";
-        
-        controlUnit(idex, exmo, mowb, opcode);
-        int r1, r2;
-        if(ctrl.regRead==1){
-        r1=bin2imm(gpr[idex.rs1]);
-        }
-        if(ctrl.ALUSrc==0 && ctrl.regRead==1){
-        r2=bin2imm(gpr[idex.rdl]);
-        }
-        if(ctrl.ALUSrc==1){
-            r2=idex.imm1;
-        }
-        exmo.ctrl.ALUSelect=ALUControl(ctrl, f7, f3);
-        ctrl.ALUResult=ALU(ctrl.ALUSelect, r1, r2);
-        mowb.ctrl.ALUResult=exmo.ctrl.ALUResult;
-        mowb.rdl=idex.rdl;
-        if(r1==r2){
-            ctrl.flag=1;
-        }
-        if(ctrl.regWrite==1){
-            if(ctrl.mem2Reg==0){
-                
-                gpr[idex.rdl]=intToBinary(ctrl.ALUResult);
-
-            }
-
-        }
 
 
+     string opcode=v[i].substr(25,7);
+        // IF stage
+        IF_stage(ifid,pc, idex, v[i]);
+        i+=4;
+
+        // ID stage
+        ID_stage(ifid, idex, exmo, mowb, ctrl, opcode, gpr);
+
+        // EX stage
+        EX_stage(idex, exmo, mowb, ctrl, gpr, ifid, pc);
+
+        // MEM stage
+        MEM_stage(exmo, mowb, idex, pc, ctrl, gpr);
+
+        // WB stage
+        WB_stage(mowb, gpr);
 
 
     }
-  
-    else if(opcode=="0110011"){//r
-        string f7=instruction.substr(0, 7);
-        idex.rs2=bin2imm(instruction.substr(7, 5));
-        idex.rs1=bin2imm(instruction.substr(12, 5));
-        string f3=instruction.substr(17, 3);
-        idex.rdl=bin2imm(instruction.substr(20, 5));
-        exmo.rd=idex.rdl;
-        mowb.rdl=idex.rdl;
-        controlUnit(idex, exmo, mowb, opcode);
-        int r1, r2;
-        if(ctrl.regRead==1){
-        r1=bin2imm(gpr[idex.rs1]);
-        }
-        if(ctrl.regRead==1){
-        r2=bin2imm(gpr[idex.rs2]);
-        }
-        ctrl.ALUSelect=ALUControl(ctrl, f7, f3);
-        ctrl.ALUResult=ALU(ctrl.ALUSelect, r1, r2);
-        exmo.ALUResult=ctrl.ALUResult;
-        mowb.ALUResult=ctrl.ALUResult;
-        if(r1==r2){
-            ctrl.flag=1;
-        }
-        if(ctrl.regWrite==1){
-            if(ctrl.mem2Reg==0){
-                   gpr[mowb.rdl]=intToBinary(ctrl.ALUResult);
-
-            }
-
-        }
-
-    }
-
-    else if(opcode=="1100011"){ //branch
-        string imm=instruction.substr(0, 7)+instruction.substr(20, 5);
-        idex.imm1=bin2imm(imm);
-        idex.rs2=bin2imm(instruction.substr(7, 5));
-        idex.rs1=bin2imm(instruction.substr(12, 5));
-        string f3=instruction.substr(17, 3);        
-        controlUnit(idex, exmo, mowb, opcode);
-         int r1, r2;
-        if(ctrl.regRead==1){
-        r1=bin2imm(gpr[idex.rs1]);
-        }
-        if(ctrl.regRead==1){
-        r2=bin2imm(gpr[idex.rs2]);
-        }
-        if(r1==r2){
-            ctrl.flag=1;
-        }
-        if(ctrl.flag==1){
-            i=i+idex.imm1;
-
-        }
-        else{
-            continue;
-        }
 
 
-
-    }
-}
-cout<<"hello"<<endl;
-
-for(int i=0; i<32; i++){
-  cout<< " pp"<< gpr[i]<<endl;
-}
-       
 
     return 0;
 }

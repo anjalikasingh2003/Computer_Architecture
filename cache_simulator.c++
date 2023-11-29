@@ -36,9 +36,9 @@ void update_lru_counters(Block block[128][4], int index, int accessed_block) {
     block[index][accessed_block].lru_counter = 0;
 }
 
-int read(Block block[128][4], int physical_address, int blockoffset, int index, int cpu_tag ){
+int read(Block block[128][4], int physical_address, int &blockoffset, int &index, int &cpu_tag ){
  bool tag_match;
-    int block_no;
+    int block_no=-1;
     for(int i=0; i<4; i++){
         if(block[index][i].tag==cpu_tag){
             tag_match=1;
@@ -52,9 +52,9 @@ int read(Block block[128][4], int physical_address, int blockoffset, int index, 
     int ans;
 
     if(tag_match==1){
-        if(block[index][block_no].state=="V"){
+        if(block[index][block_no].state=="V" || block[index][block_no].state=="MD" ){
             //hit
-            ans=block[index][block_no].data[blockoffset];
+            ans=block[index][block_no].data[blockoffset]; 
             update_lru_counters(block, index, block_no);
         
         }
@@ -89,7 +89,7 @@ int read(Block block[128][4], int physical_address, int blockoffset, int index, 
             //lru-block replacement
              block_no = lru_block_no;
         }
-        else{
+        
 
             if(block[index][block_no].state=="MD"){
                 int start_address=block[index][block_no].tag*8192+index*128+blockoffset*64;
@@ -101,14 +101,14 @@ int read(Block block[128][4], int physical_address, int blockoffset, int index, 
             block[index][block_no].state="MP";
             ans=memory_fetch(physical_address);
             for(int i=0; i<64; i++){
-                block[index][block_no].data[i]=memory_fetch((physical_address/64)*64 + i);
+                block[index][block_no].data[i]=memory_fetch(physical_address + i);
             }
             block[index][block_no].isFull=true;
             block[index][block_no].state="V";
 
             update_lru_counters(block, index, block_no);
 
-        }
+        
     }
     return ans;
 }
@@ -143,7 +143,7 @@ bool tag_match=0;
 
         }
     }
-
+ 
     if(tag_match==1){
         //hit
         block[index][block_no].state="MD";   //Modified State
@@ -152,7 +152,7 @@ bool tag_match=0;
 
     }
     else{
-        //miss
+        //miss+
         int ans =read(block, physical_address, blockoffset, index, cpu_tag);
         block[index][block_no].state="MD";   //Modified State
         block[index][block_no].data[blockoffset]=value;

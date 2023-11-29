@@ -224,7 +224,7 @@ int pc=0;
 unordered_map<string, int> symbol_table;
 
 while(getline(in, s)){
-pc++;
+pc+=4;
 
 vector<string>val;
 int j=0;
@@ -255,7 +255,7 @@ symbol_table[val[0]]=pc;
 pc=0;
 ifstream inorder("CSN221project_program.txt");
 while(getline(inorder, s)){
-pc++;
+pc+=4;
 
 vector<string>value;
 int j=0;
@@ -264,7 +264,7 @@ string exp="";
 s = trim(s);
 
 
-// unordered_map<string, int> symbol_table;
+
 
 for(int i=0; i<s.length(); i++){
     
@@ -282,13 +282,10 @@ for(int i=0; i<s.length(); i++){
 }
 value.push_back(exp);
 if(value.size()==1){
-// symbol_table[value[0]]=pc;
+
 continue;
 }
 
-// for(int i=0; i<value.size(); i++){
-//     cout<<value[i]<<" ";
-// }
 cout<<endl;
 string ans;
 
