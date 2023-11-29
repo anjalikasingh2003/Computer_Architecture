@@ -1,7 +1,7 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-struct control
+struct controlInfo
 {
     bool ALUSrc=0;
     int ALUOp;
@@ -43,13 +43,13 @@ struct IDEX
     int func7;
     int valid;
     int stall;
-   control ctrl;
+   controlInfo ctrl;
 
 };
 
 struct EXMO
 {
-    control ctrl;
+    controlInfo ctrl;
     int ALUResult;
     int rs2;
     int rdl;
@@ -62,7 +62,7 @@ struct EXMO
 
 struct MOWB
 {
-    control ctrl;
+    controlInfo ctrl;
     int ALUResult;
     int LDResult;
     int rdl;
@@ -145,7 +145,7 @@ void controlUnit(IDEX &idex, EXMO &exmo, MOWB &mowb,  string opcode)
     }
 }
 
-string ALUControl(control &ctrl, string f7, string f3){
+string ALUControl(controlInfo &ctrl, string f7, string f3){
     if(ctrl.ALUOp==10){
         if(f7=="0000000" && f3=="000"){
             return "0010";
@@ -233,7 +233,7 @@ void IF_stage(IFID &ifid, PC &pc, IDEX &idex, string &instruction) {
        pc.valid=true;
 }
 
-void ID_stage(IFID &ifid, IDEX &idex, EXMO &exmo, MOWB &mowb, control &ctrl, string &opcode, string* gpr) {
+void ID_stage(IFID &ifid, IDEX &idex, EXMO &exmo, MOWB &mowb, controlInfo &ctrl, string &opcode, string* gpr) {
 
     if(idex.stall || !ifid.valid){
         return;
@@ -285,7 +285,7 @@ void ID_stage(IFID &ifid, IDEX &idex, EXMO &exmo, MOWB &mowb, control &ctrl, str
 
 }
 
-void EX_stage(IDEX &idex, EXMO &exmo, MOWB &mowb, control &ctrl,  string* gpr, IFID &ifid, PC &pc) {
+void EX_stage(IDEX &idex, EXMO &exmo, MOWB &mowb, controlInfo &ctrl,  string* gpr, IFID &ifid, PC &pc) {
 
      if(exmo.stall || !idex.valid){
         return;
@@ -311,7 +311,7 @@ void EX_stage(IDEX &idex, EXMO &exmo, MOWB &mowb, control &ctrl,  string* gpr, I
 
 }
 
-void MEM_stage(EXMO &exmo, MOWB &mowb, IDEX &idex, PC &pc, control &ctrl, string *gpr) {
+void MEM_stage(EXMO &exmo, MOWB &mowb, IDEX &idex, PC &pc, controlInfo &ctrl, string *gpr) {
       if(mowb.stall || !exmo.valid){
         return;
     }
@@ -355,16 +355,16 @@ void WB_stage(MOWB &mowb, string* gpr) {
 
 int main(){
 
-control ctrl;
+controlInfo ctrl;
 PC pc;
 IFID ifid;
 IDEX idex;
 EXMO exmo;
 MOWB mowb;
 
-idex.ctrl = control();
-exmo.ctrl = control();
-mowb.ctrl = control();
+idex.ctrl = controlInfo();
+exmo.ctrl = controlInfo();
+mowb.ctrl = controlInfo();
 
 int i=0;
 ifstream in("encoding.txt");
@@ -388,21 +388,21 @@ while(getline(in, instruction)){
 
 
      string opcode=v[i].substr(25,7);
-        // IF stage
-        IF_stage(ifid,pc, idex, v[i]);
-        i+=4;
-
-        // ID stage
-        ID_stage(ifid, idex, exmo, mowb, ctrl, opcode, gpr);
-
-        // EX stage
-        EX_stage(idex, exmo, mowb, ctrl, gpr, ifid, pc);
+        // WB stage
+        WB_stage(mowb, gpr);
 
         // MEM stage
         MEM_stage(exmo, mowb, idex, pc, ctrl, gpr);
 
-        // WB stage
-        WB_stage(mowb, gpr);
+        // EX stage
+        EX_stage(idex, exmo, mowb, ctrl, gpr, ifid, pc);
+
+         // ID stage
+        ID_stage(ifid, idex, exmo, mowb, ctrl, opcode, gpr);
+
+        // IF stage
+        IF_stage(ifid,pc, idex, v[i]);
+        i+=4;
 
 
     }
